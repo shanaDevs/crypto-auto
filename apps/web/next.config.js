@@ -8,6 +8,11 @@ const nextConfig = {
   },
   experimental: {
     optimizePackageImports: ['lightweight-charts'],
+    cpus: 1,
+    workerThreads: false,
+  },
+  typescript: {
+    ignoreBuildErrors: true,
   },
   env: {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001',

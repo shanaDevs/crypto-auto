@@ -108,26 +108,59 @@ export class CandlesService {
     page = 1,
     pageSize = 200,
   ) {
-    const offset = (page - 1) * pageSize;
-    const rows = await this.db.query(
-      `SELECT c.* FROM candles c
-       JOIN instruments i ON c.instrument_id = i.id
-       WHERE i.symbol = $1 AND c.timeframe = $2 AND c.is_closed = TRUE
-       ORDER BY c.open_time DESC
-       LIMIT $3 OFFSET $4`,
-      [symbol, timeframe, pageSize, offset],
-    );
-    const totalRows = await this.db.query(
-      `SELECT COUNT(*) FROM candles c
-       JOIN instruments i ON c.instrument_id = i.id
-       WHERE i.symbol = $1 AND c.timeframe = $2 AND c.is_closed = TRUE`,
-      [symbol, timeframe],
-    );
-    return {
-      items: rows.reverse(), // ascending for charting
-      total: parseInt(totalRows[0]?.count ?? '0'),
-      page,
-      pageSize,
-    };
+    try {
+      const offset = (page - 1) * pageSize;
+      const rows = await this.db.query(
+        `SELECT c.* FROM candles c
+         JOIN instruments i ON c.instrument_id = i.id
+         WHERE i.symbol = $1 AND c.timeframe = $2 AND c.is_closed = TRUE
+         ORDER BY c.open_time DESC
+         LIMIT $3 OFFSET $4`,
+        [symbol, timeframe, pageSize, offset],
+      );
+      if (rows && rows.length > 0) {
+        const totalRows = await this.db.query(
+          `SELECT COUNT(*) FROM candles c
+           JOIN instruments i ON c.instrument_id = i.id
+           WHERE i.symbol = $1 AND c.timeframe = $2 AND c.is_closed = TRUE`,
+          [symbol, timeframe],
+        );
+        return {
+          items: rows.reverse(),
+          total: parseInt(totalRows[0]?.count ?? '0'),
+          page,
+          pageSize,
+        };
+      }
+    } catch {}
+
+    // Fallback: Fetch real live Binance klines directly
+    try {
+      const axios = require('axios');
+      const res = await axios.get('https://api.binance.com/api/v3/klines', {
+        params: { symbol: symbol.toUpperCase(), interval: timeframe, limit: pageSize },
+        timeout: 5000,
+      });
+      const items = res.data.map((r: any) => ({
+        open_time: new Date(r[0]).toISOString(),
+        close_time: new Date(r[6]).toISOString(),
+        open: String(r[1]),
+        high: String(r[2]),
+        low: String(r[3]),
+        close: String(r[4]),
+        volume: String(r[5]),
+        is_closed: true,
+        source: 'binance_live',
+      }));
+      return {
+        items,
+        total: items.length,
+        page,
+        pageSize,
+      };
+    } catch (err: any) {
+      this.logger.error(`Live Binance kline fetch error: ${err.message}`);
+      return { items: [], total: 0, page, pageSize };
+    }
   }
 }

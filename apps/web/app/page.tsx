@@ -14,6 +14,9 @@ import {
   fetchPatterns,
   fetchForecasts,
   fetchNews,
+  subscribeRealtimeTickers,
+  subscribeRealtimeKline,
+  detectPatternsOnRealCandles,
 } from '@/lib/api';
 import { TradingViewChart } from '@/components/chart/TradingViewChart';
 import { PatternEvidenceModal } from '@/components/workspace/PatternEvidenceModal';
@@ -29,6 +32,7 @@ export default function DashboardPage() {
   const [selectedPattern, setSelectedPattern] = useState<PatternItem | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // 1. Initial snapshot loading
   useEffect(() => {
     async function loadData() {
       setLoading(true);
@@ -45,9 +49,64 @@ export default function DashboardPage() {
 
       const c = await fetchCandles(selectedSymbol, timeframe);
       setCandles(c);
+      const liveDetected = c.length > 0 ? detectPatternsOnRealCandles(c, selectedSymbol, timeframe) : [];
+      const activePats = [...liveDetected];
+      for (const p of pats.filter((item) => item.symbol === selectedSymbol)) {
+        if (!activePats.some((m) => m.id === p.id)) activePats.push(p);
+      }
+      if (activePats.length > 0) {
+        setSelectedPattern(activePats[0]); // Auto apply top pattern on dashboard chart
+      }
       setLoading(false);
     }
     loadData();
+  }, [selectedSymbol, timeframe]);
+
+  // 2. Real-time multi-ticker stream for all 20 instruments
+  useEffect(() => {
+    const unsub = subscribeRealtimeTickers((t) => {
+      setInstruments((prev) =>
+        prev.map((item) =>
+          item.symbol === t.symbol
+            ? {
+                ...item,
+                price: t.price,
+                change24h: t.change24h,
+                volume24h: t.volume24h,
+                high24h: t.high24h,
+                low24h: t.low24h,
+                sparkline: [...item.sparkline.slice(1), t.price],
+              }
+            : item
+        )
+      );
+    });
+    return () => unsub();
+  }, []);
+
+  // 3. Real-time kline candle stream for active chart
+  useEffect(() => {
+    const unsub = subscribeRealtimeKline(selectedSymbol, timeframe, (tick, isClosed) => {
+      setCandles((prev) => {
+        if (prev.length === 0) return [tick];
+        const last = prev[prev.length - 1];
+        if (last.time === tick.time) {
+          const updated = [...prev];
+          updated[updated.length - 1] = {
+            ...tick,
+            high: Math.max(last.high, tick.high),
+            low: Math.min(last.low, tick.low),
+          };
+          return updated;
+        } else if (isClosed || tick.time > last.time) {
+          const updated = [...prev, tick];
+          if (updated.length > 250) updated.shift();
+          return updated;
+        }
+        return prev;
+      });
+    });
+    return () => unsub();
   }, [selectedSymbol, timeframe]);
 
   const selectedInst = instruments.find((i) => i.symbol === selectedSymbol) || instruments[0];
@@ -215,6 +274,8 @@ export default function DashboardPage() {
             <TradingViewChart
               candles={candles}
               patterns={symbolPatterns}
+              activePattern={selectedPattern}
+              onPatternSelect={(p) => setSelectedPattern(p)}
               forecast={activeForecast}
               symbol={selectedSymbol}
               timeframe={timeframe}
@@ -241,38 +302,61 @@ export default function DashboardPage() {
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {symbolPatterns.map((pat) => (
-                  <div
-                    key={pat.id}
-                    onClick={() => setSelectedPattern(pat)}
-                    style={{
-                      padding: 8,
-                      borderRadius: 4,
-                      background: 'var(--bg-secondary)',
-                      cursor: 'pointer',
-                      border: '1px solid var(--bg-border)',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: 11, fontWeight: 600 }}>{pat.typeLabel}</span>
-                      <span
-                        style={{
-                          fontSize: 9,
-                          fontWeight: 700,
-                          padding: '1px 5px',
-                          borderRadius: 3,
-                          background: 'rgba(0, 201, 167, 0.15)',
-                          color: 'var(--accent-teal)',
-                        }}
-                      >
-                        Quality: {pat.qualityScore}
-                      </span>
+                {symbolPatterns.map((pat) => {
+                  const isSelected = selectedPattern?.id === pat.id;
+                  return (
+                    <div
+                      key={pat.id}
+                      onClick={() => setSelectedPattern(pat)}
+                      style={{
+                        padding: 8,
+                        borderRadius: 4,
+                        background: isSelected ? 'rgba(0, 201, 167, 0.08)' : 'var(--bg-secondary)',
+                        cursor: 'pointer',
+                        border: isSelected ? '1.5px solid var(--accent-teal)' : '1px solid var(--bg-border)',
+                        boxShadow: isSelected ? '0 0 10px rgba(0, 201, 167, 0.2)' : 'none',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontSize: 11, fontWeight: 600, color: isSelected ? 'var(--accent-teal)' : 'var(--text-primary)' }}>
+                            {pat.typeLabel}
+                          </span>
+                          {isSelected && (
+                            <span
+                              style={{
+                                fontSize: 8,
+                                fontWeight: 700,
+                                padding: '1px 4px',
+                                borderRadius: 3,
+                                background: 'var(--accent-teal)',
+                                color: '#0d0f14',
+                              }}
+                            >
+                              ON CHART
+                            </span>
+                          )}
+                        </div>
+                        <span
+                          style={{
+                            fontSize: 9,
+                            fontWeight: 700,
+                            padding: '1px 5px',
+                            borderRadius: 3,
+                            background: 'rgba(0, 201, 167, 0.15)',
+                            color: 'var(--accent-teal)',
+                          }}
+                        >
+                          Quality: {pat.qualityScore}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
+                        {pat.description}
+                      </div>
                     </div>
-                    <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
-                      {pat.description}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
