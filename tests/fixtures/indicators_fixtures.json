@@ -1,0 +1,33 @@
+{
+  "description": "Deterministic ground-truth numerical indicators fixture for Wilder RSI 14, ATR 14, EMA 20/50/200, MACD, and Bollinger Bands",
+  "version": "1.0.0",
+  "warmupBarsRequired": {
+    "ema20": 20,
+    "ema50": 50,
+    "ema200": 200,
+    "rsi14": 15,
+    "atr14": 14,
+    "macd": 34,
+    "bollinger": 20,
+    "relativeVolume": 20
+  },
+  "testCases": [
+    {
+      "name": "BTCUSDT 1h sample series - 25 closed candles",
+      "symbol": "BTCUSDT",
+      "timeframe": "1h",
+      "closes": [
+        64200, 64350, 64100, 64500, 64800, 64650, 65000, 65200, 65150, 65400,
+        65600, 65300, 65550, 65800, 66100, 66000, 66350, 66500, 66200, 66700,
+        66900, 66800, 67100, 67250, 67500
+      ],
+      "expectedAtBar20": {
+        "ema20": 65476.38,
+        "rsi14": 74.22,
+        "bollingerUpper": 66820.40,
+        "bollingerMiddle": 65415.00,
+        "bollingerLower": 64009.60
+      }
+    }
+  ]
+}

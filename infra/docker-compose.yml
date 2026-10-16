@@ -1,0 +1,84 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: crypto_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: crypto
+      POSTGRES_PASSWORD: crypto_secure_pass
+      POSTGRES_DB: crypto_analysis
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ../apps/api/src/database/migrations/001_initial_schema.sql:/docker-entrypoint-initdb.d/001_initial_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crypto -d crypto_analysis"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: crypto_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.api
+    container_name: crypto_api
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://crypto:crypto_secure_pass@postgres:5432/crypto_analysis
+      REDIS_URL: redis://redis:6379
+      API_PORT: 3001
+      QUANT_SERVICE_URL: http://quant:8001
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  quant:
+    build:
+      context: ../services/quant
+      dockerfile: Dockerfile
+    container_name: crypto_quant
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      PORT: 8001
+
+  web:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.web
+    container_name: crypto_web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+      NEXT_PUBLIC_WS_URL: ws://localhost:3001
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  redisdata:

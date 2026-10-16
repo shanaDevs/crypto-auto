@@ -1,0 +1,24 @@
+{
+  "name": "crypto-analysis-platform",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/web",
+    "apps/api",
+    "packages/contracts",
+    "packages/mcp"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace=apps/api\" \"npm run dev --workspace=apps/web\" \"npm run dev --workspace=services/quant\"",
+    "dev:api": "npm run dev --workspace=apps/api",
+    "dev:web": "npm run dev --workspace=apps/web",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

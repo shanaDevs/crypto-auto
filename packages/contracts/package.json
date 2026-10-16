@@ -1,0 +1,17 @@
+{
+  "name": "@crypto/contracts",
+  "version": "1.0.0",
+  "description": "Shared schemas and types for the Crypto Analysis Platform",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}

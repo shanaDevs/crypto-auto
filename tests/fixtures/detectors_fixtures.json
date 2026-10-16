@@ -1,0 +1,80 @@
+{
+  "description": "Positive and negative numerical fixtures for the 6 P0 chart pattern detector families",
+  "version": "1.0.0",
+  "fixtures": {
+    "support_resistance": {
+      "rules": "Minimum 3 confirmed pivot touches within 0.5 ATR cluster",
+      "positive": {
+        "clusterPrice": 66800,
+        "touches": [
+          { "bar": 12, "pivotLow": 66780, "atr": 450 },
+          { "bar": 28, "pivotLow": 66820, "atr": 420 },
+          { "bar": 45, "pivotLow": 66795, "atr": 410 }
+        ],
+        "expectedQuality": 88
+      },
+      "negative": {
+        "reason": "Only 2 touches (requires >= 3 touches)",
+        "touches": [
+          { "bar": 12, "pivotLow": 66780, "atr": 450 },
+          { "bar": 28, "pivotLow": 66820, "atr": 420 }
+        ],
+        "expectedResult": "insufficient_touches"
+      }
+    },
+    "double_bottom": {
+      "rules": "Trough separation 5-80 bars, price diff <= 0.75 ATR, neckline breakout >= 0.25 ATR",
+      "positive": {
+        "trough1": { "bar": 20, "price": 65100 },
+        "trough2": { "bar": 44, "price": 65220, "atr": 500, "separationBars": 24, "priceDiffAtr": 0.24 },
+        "neckline": { "bar": 32, "price": 67300 },
+        "confirmationBar": { "bar": 48, "close": 67450, "clearanceAtr": 0.30 },
+        "expectedLifecycle": "confirmed"
+      },
+      "negative_too_close": {
+        "reason": "Separation only 3 bars (minimum is 5 bars)",
+        "trough1": { "bar": 20, "price": 65100 },
+        "trough2": { "bar": 23, "price": 65120 },
+        "expectedResult": "invalid_separation"
+      },
+      "negative_price_diff_too_large": {
+        "reason": "Price difference 1.2 ATR exceeds threshold of 0.75 ATR",
+        "trough1": { "bar": 20, "price": 65000 },
+        "trough2": { "bar": 40, "price": 65650, "atr": 500, "priceDiffAtr": 1.30 },
+        "expectedResult": "excessive_price_difference"
+      }
+    },
+    "ascending_triangle": {
+      "rules": "Flat resistance ceiling, ascending support trendline, >= 2 touches each side, 10-100 bars structure",
+      "positive": {
+        "horizontalCeiling": 2720,
+        "upperTouches": [ { "bar": 15, "high": 2719 }, { "bar": 35, "high": 2721 } ],
+        "lowerTouches": [ { "bar": 22, "low": 2620 }, { "bar": 42, "low": 2660 }, { "bar": 58, "low": 2690 } ],
+        "expectedLifecycle": "candidate"
+      }
+    },
+    "range_breakout": {
+      "rules": "Close >= 0.25 ATR beyond established boundary; 10-bar retest deadline",
+      "positive": {
+        "establishedRangeHigh": 152.50,
+        "breakoutBar": { "bar": 50, "close": 153.20, "atr": 1.80, "clearanceAtr": 0.388 },
+        "retestBar": { "bar": 54, "low": 152.45, "close": 153.40 },
+        "expectedLifecycle": "confirmed"
+      }
+    },
+    "bullish_engulfing": {
+      "rules": "Opposite real bodies, bar 2 completely encloses bar 1 real body, relative volume >= 1.0",
+      "positive": {
+        "bar1": { "open": 67300, "close": 67100, "direction": "bearish" },
+        "bar2": { "open": 67080, "close": 67420, "direction": "bullish", "relativeVolume": 1.35 },
+        "expectedLifecycle": "confirmed"
+      },
+      "negative_same_direction": {
+        "reason": "Both bars are bullish; engulfing requires opposite real bodies",
+        "bar1": { "open": 67100, "close": 67200 },
+        "bar2": { "open": 67050, "close": 67400 },
+        "expectedResult": "invalid_directions"
+      }
+    }
+  }
+}

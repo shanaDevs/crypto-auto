@@ -1,0 +1,13 @@
+{
+  "description": "Causal replay dataset with 1h closed candles for walk-forward evaluation",
+  "symbol": "BTCUSDT",
+  "timeframe": "1h",
+  "samplePoints": [
+    { "timestamp": "2026-10-15T00:00:00Z", "open": 66200, "high": 66500, "low": 66100, "close": 66450, "volume": 1200 },
+    { "timestamp": "2026-10-15T01:00:00Z", "open": 66450, "high": 66800, "low": 66350, "close": 66720, "volume": 1450 },
+    { "timestamp": "2026-10-15T02:00:00Z", "open": 66720, "high": 67100, "low": 66600, "close": 67050, "volume": 1800 },
+    { "timestamp": "2026-10-15T03:00:00Z", "open": 67050, "high": 67400, "low": 66900, "close": 67320, "volume": 1620 },
+    { "timestamp": "2026-10-15T04:00:00Z", "open": 67320, "high": 67650, "low": 67150, "close": 67580, "volume": 1950 },
+    { "timestamp": "2026-10-15T05:00:00Z", "open": 67580, "high": 67900, "low": 67450, "close": 67845, "volume": 2100 }
+  ]
+}

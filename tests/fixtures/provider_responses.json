@@ -1,0 +1,55 @@
+{
+  "description": "Provider response fixtures for Binance REST, WebSocket feeds, and news wires",
+  "binanceRestKlines": [
+    [
+      1718000000000,
+      "67200.00",
+      "67500.00",
+      "67100.00",
+      "67420.50",
+      "1420.45",
+      1718003599999,
+      "95689000.00",
+      18200,
+      "780.20",
+      "52500000.00",
+      "0"
+    ]
+  ],
+  "binanceWsKline": {
+    "e": "kline",
+    "E": 1718003600000,
+    "s": "BTCUSDT",
+    "k": {
+      "t": 1718000000000,
+      "T": 1718003599999,
+      "s": "BTCUSDT",
+      "i": "1h",
+      "f": 100,
+      "L": 200,
+      "o": "67200.00",
+      "c": "67420.50",
+      "h": "67500.00",
+      "l": "67100.00",
+      "v": "1420.45",
+      "n": 18200,
+      "x": true,
+      "q": "95689000.00",
+      "V": "780.20",
+      "Q": "52500000.00",
+      "B": "0"
+    }
+  },
+  "cryptoPanicArticle": {
+    "kind": "news",
+    "domain": "cryptopanic.com",
+    "title": "Bitcoin Spot ETF Net Inflows Hit 4-Week High Led by BlackRock IBIT",
+    "published_at": "2026-10-16T05:30:00Z",
+    "slug": "bitcoin-spot-etf-net-inflows",
+    "currencies": [
+      { "code": "BTC", "title": "Bitcoin", "slug": "bitcoin", "url": "https://cryptopanic.com/news/bitcoin/" }
+    ],
+    "id": 101,
+    "url": "https://cryptopanic.com/news/101"
+  }
+}
