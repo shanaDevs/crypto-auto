@@ -1,12 +1,12 @@
 {
   "name": "@crypto/api",
   "version": "1.0.0",
-  "description": "Crypto Analysis Platform — NestJS REST + WebSocket API",
+  "description": "Crypto Analysis Platform \u2014 NestJS REST + WebSocket API",
   "private": true,
   "scripts": {
-    "build": "nest build",
-    "dev": "nest start --watch",
-    "start": "node dist/main",
+    "build": "node init && nest build",
+    "dev": "node init && nest start --watch",
+    "start": "node init && node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\"",
     "test": "jest"
   },

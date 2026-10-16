@@ -9,10 +9,10 @@
     "packages/mcp"
   ],
   "scripts": {
-    "dev": "concurrently \"npm run dev --workspace=apps/api\" \"npm run dev --workspace=apps/web\" \"npm run dev --workspace=services/quant\"",
-    "dev:api": "npm run dev --workspace=apps/api",
-    "dev:web": "npm run dev --workspace=apps/web",
-    "build": "npm run build --workspaces --if-present",
+    "dev": "node init && concurrently \"npm run dev --workspace=apps/api\" \"npm run dev --workspace=apps/web\" \"npm run dev --workspace=services/quant\"",
+    "dev:api": "node init && npm run dev --workspace=apps/api",
+    "dev:web": "node init && npm run dev --workspace=apps/web",
+    "build": "node init && npm run build --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present"
   },
   "devDependencies": {

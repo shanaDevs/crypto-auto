@@ -13,13 +13,18 @@ import {
   LineData,
   ColorType,
   Time,
+  IPriceLine,
+  createSeriesMarkers,
 } from 'lightweight-charts';
 import { CandleData, PatternItem, ForecastItem } from '@/lib/api';
 import { useThemeStore } from '@/store/themeStore';
+import { useDemoTrade } from '@/store/useDemoTrade';
 
 interface TradingViewChartProps {
   candles: CandleData[];
   patterns?: PatternItem[];
+  activePattern?: PatternItem | null;
+  onPatternSelect?: (pattern: PatternItem | null) => void;
   forecast?: ForecastItem;
   symbol: string;
   timeframe: string;
@@ -38,6 +43,8 @@ interface TradingViewChartProps {
 export function TradingViewChart({
   candles,
   patterns = [],
+  activePattern,
+  onPatternSelect,
   forecast,
   symbol,
   timeframe,
@@ -62,6 +69,23 @@ export function TradingViewChart({
   const forecastMedianRef = useRef<ISeriesApi<'Line'> | null>(null);
   const forecastUpperRef = useRef<ISeriesApi<'Line'> | null>(null);
   const forecastLowerRef = useRef<ISeriesApi<'Line'> | null>(null);
+
+  // Pattern overlays & series markers refs
+  const priceLinesRef = useRef<IPriceLine[]>([]);
+  const seriesMarkersRef = useRef<any>(null);
+  const demoPriceLinesRef = useRef<IPriceLine[]>([]);
+  const prevSymbolRef = useRef<string>(symbol);
+
+  const { openTrades, openTrade, closeTrade } = useDemoTrade();
+  const currentDemoTrade = openTrades.find((t) => t.symbol === symbol);
+
+  const [internalSelectedPattern, setInternalSelectedPattern] = useState<PatternItem | null>(null);
+  const [autoApply, setAutoApply] = useState<boolean>(true);
+
+  // Derive active pattern: explicit activePattern, internal selection, or auto-apply top pattern
+  const effectivePattern: PatternItem | null =
+    activePattern || internalSelectedPattern || (autoApply && patterns.length > 0 ? patterns[0] : null);
+
 
   const { theme } = useThemeStore();
   const [crosshairPrice, setCrosshairPrice] = useState<{
@@ -135,6 +159,9 @@ export function TradingViewChart({
         borderColor: borderColor,
         timeVisible: true,
         secondsVisible: false,
+        rightOffset: 14,
+        barSpacing: 9,
+        minBarSpacing: 3,
       },
     });
 
@@ -219,6 +246,11 @@ export function TradingViewChart({
     });
     forecastLowerRef.current = forecastLower;
 
+    // Series Markers Primitive
+    try {
+      seriesMarkersRef.current = createSeriesMarkers(candleSeries);
+    } catch {}
+
     // Crosshair Subscriber
     chart.subscribeCrosshairMove((param) => {
       if (!param || !param.time || !param.seriesData) {
@@ -261,6 +293,8 @@ export function TradingViewChart({
 
     return () => {
       window.removeEventListener('resize', handleResize);
+      priceLinesRef.current = [];
+      seriesMarkersRef.current = null;
       chart.remove();
     };
   }, [theme, height]);
@@ -353,7 +387,220 @@ export function TradingViewChart({
       volume: last.volume,
       change: Number((((last.close - last.open) / last.open) * 100).toFixed(2)),
     });
-  }, [candles, showIndicators, forecast]);
+
+    // Chart remains at user's current scroll/zoom position.
+    // View only snaps to latest candle when user explicitly clicks '🎯 Focus Latest Candle'.
+  }, [candles, showIndicators, forecast, symbol]);
+
+  // ─── Automatic Usable Pattern Price Lines (Trigger, Stop Loss, Target 1, Geometry) ─
+  useEffect(() => {
+    const series = candleSeriesRef.current;
+    if (!series) return;
+
+    // 1. Clear existing pattern price lines safely
+    priceLinesRef.current.forEach((line) => {
+      try {
+        series.removePriceLine(line);
+      } catch {}
+    });
+    priceLinesRef.current = [];
+
+    // 2. Only draw if patterns toggle is enabled and an effective pattern is available
+    if (showIndicators?.patterns === false || !effectivePattern) return;
+
+    const pat = effectivePattern;
+
+    // A. Entry Trigger Level (Teal Dashed)
+    if (pat.triggerPrice) {
+      try {
+        const line = series.createPriceLine({
+          price: pat.triggerPrice,
+          color: '#00c9a7',
+          lineWidth: 2,
+          lineStyle: 2, // Dashed
+          axisLabelVisible: true,
+          title: `ENTRY TRIGGER: $${pat.triggerPrice.toLocaleString()}`,
+        });
+        priceLinesRef.current.push(line);
+      } catch {}
+    }
+
+    // B. Invalidation Stop Loss Level (Rose Dotted)
+    if (pat.invalidationPrice) {
+      try {
+        const line = series.createPriceLine({
+          price: pat.invalidationPrice,
+          color: '#f43f5e',
+          lineWidth: 2,
+          lineStyle: 1, // Dotted
+          axisLabelVisible: true,
+          title: `STOP LOSS: $${pat.invalidationPrice.toLocaleString()}`,
+        });
+        priceLinesRef.current.push(line);
+      } catch {}
+    }
+
+    // C. Take Profit Target 1 (1:1.8 Risk-to-Reward Ratio, Cyan Dashed)
+    if (pat.triggerPrice && pat.invalidationPrice) {
+      const risk = Math.abs(pat.triggerPrice - pat.invalidationPrice);
+      const isBull = pat.triggerPrice >= pat.invalidationPrice;
+      const target1 = isBull ? pat.triggerPrice + risk * 1.8 : pat.triggerPrice - risk * 1.8;
+      try {
+        const line = series.createPriceLine({
+          price: Number(target1.toFixed(2)),
+          color: '#38bdf8',
+          lineWidth: 2,
+          lineStyle: 2, // Dashed
+          axisLabelVisible: true,
+          title: `TARGET 1 (1:1.8 R:R): $${Number(target1.toFixed(2)).toLocaleString()}`,
+        });
+        priceLinesRef.current.push(line);
+      } catch {}
+    }
+
+    // D. Structural Geometry (Neckline, S/R Zone Min/Max, Triangle Bounds)
+    if (pat.coordinates) {
+      if (pat.coordinates.neckline) {
+        try {
+          const line = series.createPriceLine({
+            price: pat.coordinates.neckline,
+            color: '#fbbf24',
+            lineWidth: 1,
+            lineStyle: 0, // Solid
+            axisLabelVisible: true,
+            title: `NECKLINE: $${pat.coordinates.neckline.toLocaleString()}`,
+          });
+          priceLinesRef.current.push(line);
+        } catch {}
+      } else if (pat.coordinates.zoneMin) {
+        try {
+          const line = series.createPriceLine({
+            price: pat.coordinates.zoneMin,
+            color: '#10b981',
+            lineWidth: 1,
+            lineStyle: 0, // Solid
+            axisLabelVisible: true,
+            title: `DEMAND FLOOR: $${pat.coordinates.zoneMin.toLocaleString()}`,
+          });
+          priceLinesRef.current.push(line);
+        } catch {}
+      } else if (pat.coordinates.resistance) {
+        try {
+          const line = series.createPriceLine({
+            price: pat.coordinates.resistance,
+            color: '#fbbf24',
+            lineWidth: 1,
+            lineStyle: 0, // Solid
+            axisLabelVisible: true,
+            title: `CEILING RESISTANCE: $${pat.coordinates.resistance.toLocaleString()}`,
+          });
+          priceLinesRef.current.push(line);
+        } catch {}
+      }
+    }
+  }, [effectivePattern, showIndicators?.patterns, candles]);
+
+  // ─── Pattern Series Markers on Candlestick Anchor Bars ──────────────────────
+  useEffect(() => {
+    if (!seriesMarkersRef.current) return;
+    if (showIndicators?.patterns === false || patterns.length === 0 || candles.length === 0) {
+      try {
+        seriesMarkersRef.current.setMarkers([]);
+      } catch {}
+      return;
+    }
+
+    try {
+      const markers = patterns.slice(0, 5).map((pat) => {
+        const anchorSec = pat.anchorTime
+          ? Math.floor(new Date(pat.anchorTime).getTime() / 1000)
+          : candles[candles.length - 1].time;
+
+        let nearest = candles[0];
+        let minDiff = Infinity;
+        for (const c of candles) {
+          const diff = Math.abs(c.time - anchorSec);
+          if (diff < minDiff) {
+            minDiff = diff;
+            nearest = c;
+          }
+        }
+        const isBull =
+          pat.type.includes('bottom') || pat.type.includes('support') || pat.type.includes('bullish');
+
+        return {
+          time: nearest.time as Time,
+          position: isBull ? ('belowBar' as const) : ('aboveBar' as const),
+          color: isBull ? '#00c9a7' : '#f43f5e',
+          shape: isBull ? ('arrowUp' as const) : ('arrowDown' as const),
+          text: `${pat.typeLabel} (${pat.qualityScore}%)`,
+        };
+      });
+
+      seriesMarkersRef.current.setMarkers(markers);
+    } catch {}
+  }, [patterns, showIndicators?.patterns, candles]);
+
+  // Focus directly on the latest candles with proper padding
+  const handleFocusLatest = () => {
+    if (!chartRef.current || candles.length === 0) return;
+    try {
+      const timeScale = chartRef.current.timeScale();
+      const total = candles.length;
+      timeScale.setVisibleLogicalRange({
+        from: Math.max(0, total - 75),
+        to: total + 10,
+      });
+      timeScale.scrollToPosition(0, false);
+    } catch {}
+  };
+
+  // ─── Active Demo Position Price Lines (Entry, TP, SL) ──────────────────────
+  useEffect(() => {
+    const series = candleSeriesRef.current;
+    if (!series) return;
+
+    demoPriceLinesRef.current.forEach((line) => {
+      try {
+        series.removePriceLine(line);
+      } catch {}
+    });
+    demoPriceLinesRef.current = [];
+
+    if (!currentDemoTrade) return;
+
+    try {
+      const entryLine = series.createPriceLine({
+        price: currentDemoTrade.entryPrice,
+        color: '#38bdf8',
+        lineWidth: 2,
+        lineStyle: 0,
+        axisLabelVisible: true,
+        title: `DEMO ${currentDemoTrade.side}: $${currentDemoTrade.entryPrice.toLocaleString()}`,
+      });
+      demoPriceLinesRef.current.push(entryLine);
+
+      const tpLine = series.createPriceLine({
+        price: currentDemoTrade.takeProfit,
+        color: '#00c9a7',
+        lineWidth: 2,
+        lineStyle: 2,
+        axisLabelVisible: true,
+        title: `DEMO TP: $${currentDemoTrade.takeProfit.toLocaleString()}`,
+      });
+      demoPriceLinesRef.current.push(tpLine);
+
+      const slLine = series.createPriceLine({
+        price: currentDemoTrade.stopLoss,
+        color: '#f43f5e',
+        lineWidth: 2,
+        lineStyle: 1,
+        axisLabelVisible: true,
+        title: `DEMO SL: $${currentDemoTrade.stopLoss.toLocaleString()}`,
+      });
+      demoPriceLinesRef.current.push(slLine);
+    } catch {}
+  }, [currentDemoTrade]);
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
@@ -406,10 +653,60 @@ export function TradingViewChart({
             </span>
           </>
         )}
+
+        {/* Focus Latest Candle Quick Button */}
+        <button
+          onClick={handleFocusLatest}
+          style={{
+            background: 'rgba(0, 201, 167, 0.15)',
+            border: '1px solid var(--accent-teal)',
+            borderRadius: 4,
+            padding: '2px 8px',
+            fontSize: 10,
+            fontWeight: 700,
+            color: 'var(--accent-teal)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            transition: 'all 0.15s ease',
+          }}
+          title="Auto-scroll directly to latest live candle"
+        >
+          🎯 Focus Latest Candle
+        </button>
+
+        {/* Active Demo Trade Status Pill */}
+        {currentDemoTrade && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              background: 'rgba(56, 189, 248, 0.15)',
+              border: '1px solid var(--accent-blue)',
+              borderRadius: 4,
+              padding: '2px 8px',
+              fontSize: 10,
+            }}
+          >
+            <span style={{ color: 'var(--accent-blue)', fontWeight: 700 }}>
+              DEMO {currentDemoTrade.side}:
+            </span>
+            <span
+              style={{
+                fontWeight: 700,
+                color: currentDemoTrade.unrealizedPnl >= 0 ? 'var(--accent-teal)' : 'var(--accent-rose)',
+              }}
+            >
+              {currentDemoTrade.unrealizedPnl >= 0 ? '+' : ''}${currentDemoTrade.unrealizedPnl.toFixed(2)}
+            </span>
+          </div>
+        )}
       </div>
 
-      {/* Detected Patterns Overlay Floating Badges */}
-      {showIndicators?.patterns && patterns.length > 0 && (
+      {/* Floating Interactive Pattern Heads-Up Display (Automatic Pattern Applied) */}
+      {showIndicators?.patterns !== false && patterns.length > 0 && (
         <div
           style={{
             position: 'absolute',
@@ -417,44 +714,347 @@ export function TradingViewChart({
             left: 12,
             zIndex: 10,
             display: 'flex',
-            flexWrap: 'wrap',
+            flexDirection: 'column',
             gap: 6,
+            maxWidth: 'calc(100% - 24px)',
           }}
         >
-          {patterns.slice(0, 3).map((pat) => (
-            <button
-              key={pat.id}
-              onClick={() => onPatternClick && onPatternClick(pat)}
+          {/* Pattern Switcher Pills Row */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <span
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                background: 'rgba(22, 25, 32, 0.85)',
-                border: '1px solid var(--accent-teal)',
-                borderRadius: 4,
-                padding: '2px 8px',
                 fontSize: 10,
-                color: 'var(--accent-teal)',
-                cursor: 'pointer',
+                color: 'var(--text-muted)',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em',
+                background: 'rgba(13, 15, 20, 0.85)',
+                padding: '3px 6px',
+                borderRadius: 4,
+                border: '1px solid var(--bg-border)',
               }}
-              title="Click to view numerical evidence snapshot"
             >
-              <span>◎</span>
-              <span>{pat.typeLabel}</span>
-              <span
+              Detected ({patterns.length}):
+            </span>
+
+            {patterns.map((pat) => {
+              const isSelected = effectivePattern?.id === pat.id;
+              return (
+                <button
+                  key={pat.id}
+                  onClick={() => {
+                    setInternalSelectedPattern(pat);
+                    onPatternSelect?.(pat);
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    background: isSelected ? 'rgba(0, 201, 167, 0.18)' : 'rgba(22, 25, 32, 0.85)',
+                    border: isSelected ? '1.5px solid var(--accent-teal)' : '1px solid var(--bg-border)',
+                    borderRadius: 4,
+                    padding: '3px 8px',
+                    fontSize: 11,
+                    fontWeight: isSelected ? 700 : 500,
+                    color: isSelected ? 'var(--accent-teal)' : 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    boxShadow: isSelected ? '0 0 10px rgba(0, 201, 167, 0.25)' : 'none',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <span>{isSelected ? '✓' : '◎'}</span>
+                  <span>{pat.typeLabel}</span>
+                  <span
+                    style={{
+                      background: isSelected ? 'var(--accent-teal)' : 'var(--bg-secondary)',
+                      color: isSelected ? '#0d0f14' : 'var(--text-muted)',
+                      borderRadius: 3,
+                      padding: '1px 4px',
+                      fontWeight: 700,
+                      fontSize: 9,
+                    }}
+                  >
+                    {pat.qualityScore}%
+                  </span>
+                </button>
+              );
+            })}
+
+            {/* Clear / Auto Toggle */}
+            {effectivePattern ? (
+              <button
+                onClick={() => {
+                  setInternalSelectedPattern(null);
+                  setAutoApply(false);
+                  onPatternSelect?.(null);
+                }}
                 style={{
-                  background: 'var(--accent-teal)',
-                  color: '#0d0f14',
-                  borderRadius: 3,
-                  padding: '0 4px',
-                  fontWeight: 700,
-                  fontSize: 9,
+                  background: 'rgba(244, 63, 94, 0.1)',
+                  border: '1px solid rgba(244, 63, 94, 0.3)',
+                  color: '#f43f5e',
+                  borderRadius: 4,
+                  padding: '3px 8px',
+                  fontSize: 10,
+                  cursor: 'pointer',
+                }}
+                title="Remove pattern lines from chart"
+              >
+                ✕ Clear Overlay
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  setAutoApply(true);
+                  if (patterns.length > 0) {
+                    setInternalSelectedPattern(patterns[0]);
+                    onPatternSelect?.(patterns[0]);
+                  }
+                }}
+                style={{
+                  background: 'rgba(0, 201, 167, 0.1)',
+                  border: '1px solid var(--accent-teal)',
+                  color: 'var(--accent-teal)',
+                  borderRadius: 4,
+                  padding: '3px 8px',
+                  fontSize: 10,
+                  cursor: 'pointer',
+                  fontWeight: 600,
                 }}
               >
-                {pat.qualityScore}
-              </span>
-            </button>
-          ))}
+                + Auto Apply Top Pattern
+              </button>
+            )}
+
+            {/* Quick Demo Trade Button */}
+            {currentDemoTrade ? (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  background: 'rgba(56, 189, 248, 0.15)',
+                  border: '1px solid var(--accent-blue)',
+                  borderRadius: 4,
+                  padding: '3px 8px',
+                  fontSize: 10,
+                }}
+              >
+                <span style={{ color: 'var(--accent-blue)', fontWeight: 700 }}>
+                  DEMO {currentDemoTrade.side} OPEN
+                </span>
+                <span
+                  style={{
+                    fontWeight: 700,
+                    color: currentDemoTrade.unrealizedPnl >= 0 ? 'var(--accent-teal)' : 'var(--accent-rose)',
+                  }}
+                >
+                  {currentDemoTrade.unrealizedPnl >= 0 ? '+' : ''}${currentDemoTrade.unrealizedPnl.toFixed(2)}
+                </span>
+                <button
+                  onClick={() => closeTrade(currentDemoTrade.id, currentDemoTrade.currentPrice, 'MANUAL')}
+                  style={{
+                    background: 'none',
+                    border: '1px solid var(--accent-rose)',
+                    borderRadius: 3,
+                    color: 'var(--accent-rose)',
+                    fontSize: 9,
+                    padding: '1px 5px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Close Position
+                </button>
+              </div>
+            ) : effectivePattern && effectivePattern.triggerPrice && effectivePattern.invalidationPrice ? (
+              <button
+                onClick={() => {
+                  const isBull = effectivePattern.triggerPrice! >= effectivePattern.invalidationPrice!;
+                  const risk = Math.abs(effectivePattern.triggerPrice! - effectivePattern.invalidationPrice!);
+                  const tp = isBull ? effectivePattern.triggerPrice! + risk * 1.8 : effectivePattern.triggerPrice! - risk * 1.8;
+                  openTrade({
+                    symbol,
+                    side: isBull ? 'LONG' : 'SHORT',
+                    entryPrice: effectivePattern.triggerPrice!,
+                    stopLoss: effectivePattern.invalidationPrice!,
+                    takeProfit: Number(tp.toFixed(2)),
+                    patternName: effectivePattern.typeLabel,
+                    patternQuality: effectivePattern.qualityScore,
+                    patternId: effectivePattern.id,
+                    leverage: 10,
+                  });
+                }}
+                style={{
+                  background:
+                    effectivePattern.triggerPrice >= effectivePattern.invalidationPrice
+                      ? 'rgba(0, 201, 167, 0.25)'
+                      : 'rgba(244, 63, 94, 0.25)',
+                  border: `1px solid ${
+                    effectivePattern.triggerPrice >= effectivePattern.invalidationPrice
+                      ? 'var(--accent-teal)'
+                      : '#f43f5e'
+                  }`,
+                  color:
+                    effectivePattern.triggerPrice >= effectivePattern.invalidationPrice
+                      ? 'var(--accent-teal)'
+                      : '#f43f5e',
+                  borderRadius: 4,
+                  padding: '3px 10px',
+                  fontSize: 10,
+                  cursor: 'pointer',
+                  fontWeight: 800,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  boxShadow: '0 0 12px rgba(0, 201, 167, 0.25)',
+                }}
+                title={`Take simulated paper demo entry at marked price $${effectivePattern.triggerPrice}`}
+              >
+                ⚡ Auto-Take Entry from Marked Pattern (
+                {effectivePattern.triggerPrice >= effectivePattern.invalidationPrice ? 'BUY LONG' : 'SELL SHORT'} @ $
+                {effectivePattern.triggerPrice.toLocaleString()})
+              </button>
+            ) : null}
+          </div>
+
+          {/* Active Pattern Details Floating HUD */}
+          {effectivePattern && (
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 12,
+                padding: '6px 12px',
+                background: 'rgba(13, 15, 20, 0.92)',
+                backdropFilter: 'blur(10px)',
+                borderRadius: 6,
+                border: '1px solid rgba(0, 201, 167, 0.35)',
+                fontSize: 11,
+                fontFamily: 'JetBrains Mono, monospace',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+                flexWrap: 'wrap',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span
+                  style={{
+                    width: 7,
+                    height: 7,
+                    borderRadius: '50%',
+                    background: 'var(--accent-teal)',
+                    boxShadow: '0 0 8px var(--accent-teal)',
+                    display: 'inline-block',
+                  }}
+                />
+                <strong style={{ color: 'var(--text-primary)' }}>{effectivePattern.typeLabel}</strong>
+                <span
+                  style={{
+                    fontSize: 9,
+                    padding: '1px 5px',
+                    borderRadius: 3,
+                    background:
+                      effectivePattern.lifecycle === 'confirmed'
+                        ? 'rgba(0,201,167,0.15)'
+                        : 'rgba(251,191,36,0.15)',
+                    color: effectivePattern.lifecycle === 'confirmed' ? 'var(--accent-teal)' : '#fbbf24',
+                    fontWeight: 700,
+                  }}
+                >
+                  {effectivePattern.lifecycle.toUpperCase()}
+                </span>
+              </div>
+
+              {effectivePattern.triggerPrice && (
+                <span style={{ color: 'var(--text-muted)' }}>
+                  Trigger:{' '}
+                  <strong style={{ color: 'var(--accent-teal)' }}>
+                    ${effectivePattern.triggerPrice.toLocaleString()}
+                  </strong>
+                </span>
+              )}
+
+              {effectivePattern.invalidationPrice && (
+                <span style={{ color: 'var(--text-muted)' }}>
+                  Stop:{' '}
+                  <strong style={{ color: '#f43f5e' }}>
+                    ${effectivePattern.invalidationPrice.toLocaleString()}
+                  </strong>
+                </span>
+              )}
+
+              {effectivePattern.triggerPrice && effectivePattern.invalidationPrice && (
+                <>
+                  {(() => {
+                    const risk = Math.abs(
+                      effectivePattern.triggerPrice - effectivePattern.invalidationPrice
+                    );
+                    const isBull = effectivePattern.triggerPrice >= effectivePattern.invalidationPrice;
+                    const target = isBull
+                      ? effectivePattern.triggerPrice + risk * 1.8
+                      : effectivePattern.triggerPrice - risk * 1.8;
+                    const pct = ((risk * 1.8) / effectivePattern.triggerPrice) * 100;
+                    return (
+                      <>
+                        <span style={{ color: 'var(--text-muted)' }}>
+                          Target 1:{' '}
+                          <strong style={{ color: '#38bdf8' }}>
+                            ${target.toLocaleString(undefined, { maximumFractionDigits: 2 })} (+{pct.toFixed(1)}%)
+                          </strong>
+                        </span>
+                        <span style={{ color: 'var(--accent-teal)', fontWeight: 700 }}>
+                          R:R 1:1.8
+                        </span>
+
+                        {!currentDemoTrade && (
+                          <button
+                            onClick={() => {
+                              openTrade({
+                                symbol,
+                                side: isBull ? 'LONG' : 'SHORT',
+                                entryPrice: effectivePattern.triggerPrice!,
+                                stopLoss: effectivePattern.invalidationPrice!,
+                                takeProfit: Number(target.toFixed(2)),
+                                patternName: effectivePattern.typeLabel,
+                                patternQuality: effectivePattern.qualityScore,
+                                patternId: effectivePattern.id,
+                                leverage: 10,
+                              });
+                            }}
+                            style={{
+                              background: isBull ? 'var(--accent-teal)' : 'var(--accent-rose)',
+                              border: 'none',
+                              color: '#0d0f14',
+                              borderRadius: 3,
+                              padding: '2px 8px',
+                              fontSize: 10,
+                              fontWeight: 800,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            ⚡ Trade Marked Level
+                          </button>
+                        )}
+                      </>
+                    );
+                  })()}
+                </>
+              )}
+
+              <button
+                onClick={() => onPatternClick && onPatternClick(effectivePattern)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--accent-teal)',
+                  fontSize: 10,
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                  padding: 0,
+                }}
+              >
+                View Evidence ↗
+              </button>
+            </div>
+          )}
         </div>
       )}
 
