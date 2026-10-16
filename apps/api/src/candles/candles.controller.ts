@@ -1,11 +1,8 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { Controller, Get, Query } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { CandlesService } from './candles.service';
 
 @ApiTags('candles')
-@ApiBearerAuth()
-@UseGuards(AuthGuard('jwt'))
 @Controller('candles')
 export class CandlesController {
   constructor(private readonly svc: CandlesService) {}

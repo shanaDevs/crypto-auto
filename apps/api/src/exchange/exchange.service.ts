@@ -18,9 +18,9 @@ export class ExchangeService {
     private readonly demo: DemoAdapter,
   ) {
     const provider = process.env.EXCHANGE_PROVIDER ?? 'demo';
-    if (provider === 'binance') {
+    if (provider === 'binance' || provider === 'real') {
       this.adapter = binance;
-      this.logger.log('Exchange provider: Binance (live)');
+      this.logger.log('Exchange provider: Binance (LIVE REAL-TIME)');
     } else {
       this.adapter = demo;
       this.logger.log('Exchange provider: Demo (deterministic)');

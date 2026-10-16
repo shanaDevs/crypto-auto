@@ -4,10 +4,12 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useThemeStore } from '@/store/themeStore';
 import { DemoBadge } from '@/components/ui/DemoBadge';
+import { DemoTradingEngine } from '@/components/demo/DemoTradingEngine';
 
 const NAV_ITEMS = [
   { href: '/', label: 'Dashboard', icon: '◈' },
   { href: '/workspace', label: 'Coin Workspace', icon: '◉' },
+  { href: '/demo-trades', label: 'Demo Trading & Accuracy', icon: '🎯' },
   { href: '/scanner', label: 'Pattern Scanner', icon: '◎' },
   { href: '/forecasts', label: 'Forecast Archive', icon: '◌' },
   { href: '/news', label: 'News Centre', icon: '◆' },
@@ -102,6 +104,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           {children}
         </main>
       </div>
+
+      {/* Global Background Demo Trading Engine & Notification Toasts */}
+      <DemoTradingEngine />
     </div>
   );
 }

@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 
 export default function AdminSettingsPage() {
-  const [exchangeProvider, setExchangeProvider] = useState('demo');
+  const [exchangeProvider, setExchangeProvider] = useState('binance');
   const [quoteStaleThreshold, setQuoteStaleThreshold] = useState(15);
   const [candleStaleThreshold, setCandleStaleThreshold] = useState(30);
 
