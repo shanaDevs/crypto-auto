@@ -11,7 +11,7 @@ import { NewsModule } from './news/news.module';
 import { AiModule } from './ai/ai.module';
 import { AlertsModule } from './alerts/alerts.module';
 import { McpModule } from './mcp/mcp.module';
-import { EventsGateway } from './events/events.gateway';
+import { EventsModule } from './events/events.module';
 import { HealthModule } from './health/health.module';
 import { DatabaseModule } from './database/database.module';
 
@@ -23,6 +23,7 @@ import { DatabaseModule } from './database/database.module';
       redis: process.env.REDIS_URL ?? 'redis://localhost:6379',
     }),
     DatabaseModule,
+    EventsModule,
     AuthModule,
     HealthModule,
     InstrumentsModule,
@@ -34,6 +35,5 @@ import { DatabaseModule } from './database/database.module';
     AlertsModule,
     McpModule,
   ],
-  providers: [EventsGateway],
 })
 export class AppModule {}
